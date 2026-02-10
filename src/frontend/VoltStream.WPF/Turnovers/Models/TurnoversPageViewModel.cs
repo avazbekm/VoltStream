@@ -530,11 +530,9 @@ public partial class TurnoversPageViewModel : ViewModelBase
         const double approxSingleRowHeight = 25;
 
         var operations = CustomerOperationsForDisplay?.ToList() ?? [];
-
         double currentY = 0;
         int pageNumber = 1;
         int currentIndex = 0;
-
         List<FixedPage> tempPages = [];
 
         while (currentIndex < operations.Count)
@@ -543,16 +541,12 @@ public partial class TurnoversPageViewModel : ViewModelBase
             var page = new FixedPage { Width = pageWidth, Height = pageHeight, Background = Brushes.White };
             var container = new StackPanel { Margin = new Thickness(margin, 30, margin, margin) };
 
-            // 1. HEADER
             if (isFirstPage)
             {
                 currentY = AddHeaderContent(container, pageNumber, true);
-
-                // --- BOSHLANG'ICH QOLDIQ JADVALGA YOPISHGAN ---
                 var beginBalanceBlock = CreateBalanceInfoBlock("Boshlang'ich qoldiq", BeginBalance?.ToString("N2") ?? "0.00", Brushes.AliceBlue);
-                beginBalanceBlock.Margin = new Thickness(0); // Yopishib turishi uchun
+                beginBalanceBlock.Margin = new Thickness(0);
                 container.Children.Add(beginBalanceBlock);
-
                 currentY += 30;
             }
             else
@@ -560,15 +554,16 @@ public partial class TurnoversPageViewModel : ViewModelBase
                 currentY = AddHeaderContent(container, pageNumber, false);
             }
 
-            // 2. JADVAL
+            // 2. JADVAL - Ustunlar o'zgardi (70, 550, 140)
             var table = new Grid();
-            double[] widths = [70, 430, 120, 120];
+            double[] widths = [70, 555, 120]; // Kredit ustuni olib tashlanib, izohga qo'shildi
             foreach (var w in widths)
                 table.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(w) });
 
-            AddRowHeader(table, "Sana", "Izoh", "Kredit", "Debit", approxSingleRowHeight);
+            AddRowHeader(table, "Sana", "Izoh", "Debit/Kredit", approxSingleRowHeight);
 
-            double footerSpace = approxSingleRowHeight * 2.5 + 50;
+            // Jami qismi uchun joy (Endi 2 ta qator bo'lgani uchun joyni ko'paytiramiz)
+            double footerSpace = approxSingleRowHeight * 4 + 50;
             var opsOnPage = new List<CustomerOperationForDisplayViewModel>();
 
             int tempIndex = currentIndex;
@@ -593,18 +588,18 @@ public partial class TurnoversPageViewModel : ViewModelBase
             currentIndex += opsOnPage.Count;
             bool isLastPage = (currentIndex >= operations.Count);
 
-            // 3. JAMI VA OXIRGI QOLDIQ
             if (isLastPage)
             {
                 decimal totalDebit = operations.Sum(x => x.Debit);
                 decimal totalCredit = operations.Sum(x => x.Credit);
-                AddRowTotal(table, "JAMI", totalCredit.ToString("N2"), totalDebit.ToString("N2"), approxSingleRowHeight);
 
-                container.Children.Add(table); // Jadvalni qo'shish
+                // JAMI QISMI - Ikkita qator qilib chiqarish
+                AddRowTotalNew(table, totalCredit, totalDebit, approxSingleRowHeight);
 
-                // --- OXIRGI QOLDIQ JADVALGA YOPISHGAN ---
+                container.Children.Add(table);
+
                 var lastBalanceBlock = CreateBalanceInfoBlock("Oxirgi qoldiq", LastBalance?.ToString("N2") ?? "0.00", Brushes.GhostWhite);
-                lastBalanceBlock.Margin = new Thickness(0); // Yopishib turishi uchun
+                lastBalanceBlock.Margin = new Thickness(0);
                 container.Children.Add(lastBalanceBlock);
             }
             else
@@ -614,12 +609,11 @@ public partial class TurnoversPageViewModel : ViewModelBase
 
             page.Children.Add(container);
             tempPages.Add(page);
-
             pageNumber++;
             currentY = 0;
         }
 
-        // Sahifalash...
+        // Sahifalarni yig'ish (avvalgi kod bilan bir xil)
         int totalPages = tempPages.Count;
         int finalPageNumber = 1;
         foreach (var finalPage in tempPages)
@@ -630,8 +624,118 @@ public partial class TurnoversPageViewModel : ViewModelBase
             doc.Pages.Add(pageContent);
             finalPageNumber++;
         }
-
         return doc;
+    }
+
+    // 1. Yangi qator qo'shish metodi (Debit/Kredit ranglari bilan)
+    private void AddOperationRow(Grid grid, CustomerOperationForDisplayViewModel op, double approxSingleRowHeight)
+    {
+        int row = grid.RowDefinitions.Count;
+        // Kenglikni 555 deb qat'iy belgilash yoki widths[1] dan foydalanish
+        double requiredHeight = CalculateOperationRowHeight(op, 555);
+        grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(requiredHeight) });
+
+        Brush amountBrush = op.Debit > 0 ? Brushes.DarkRed : Brushes.Black;
+        string amountText = op.Debit > 0 ? op.Debit.ToString("N2") : op.Credit.ToString("N2");
+
+        // Sana: 12, Izoh: 12, Debit/Kredit: 12
+        AddSimpleCell(grid, row, 0, op.Date.ToString("dd.MM.yyyy"), TextAlignment.Center, FontWeights.Normal, 12, new Thickness(0.5, 0.5, 0, 0.5), Brushes.Black);
+        AddSimpleCell(grid, row, 1, op.Description ?? op.FormattedDescription ?? "", TextAlignment.Left, FontWeights.Normal, 12, new Thickness(0.5, 0.5, 0, 0.5), Brushes.Black);
+        AddSimpleCell(grid, row, 2, amountText, TextAlignment.Right, FontWeights.Bold, 12, new Thickness(0.5, 0.5, 0.5, 0.5), amountBrush);
+    }
+    // 2. Header o'zgarishi
+    private void AddRowHeader(Grid grid, string date, string description, string debitKreditLabel, double height)
+    {
+        int row = grid.RowDefinitions.Count;
+        grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(height) });
+
+        AddSimpleCell(grid, row, 0, date, TextAlignment.Center, FontWeights.Bold, 12, new Thickness(0.5, 0.5, 0, 0.5), Brushes.Black);
+        AddSimpleCell(grid, row, 1, description, TextAlignment.Center, FontWeights.Bold, 12, new Thickness(0.5, 0.5, 0, 0.5), Brushes.Black);
+
+        var tb = new TextBlock
+        {
+            FontSize = 12, // 14 dan 12 ga tushirildi
+            FontWeight = FontWeights.Bold,
+            TextAlignment = TextAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        tb.Inlines.Add(new Run("Debit") { Foreground = Brushes.DarkRed });
+        tb.Inlines.Add(new Run(" / ") { Foreground = Brushes.Black });
+        tb.Inlines.Add(new Run("Kredit") { Foreground = Brushes.Black });
+
+        var border = new Border
+        {
+            BorderBrush = Brushes.Black,
+            BorderThickness = new Thickness(0.5),
+            Child = tb
+        };
+
+        Grid.SetRow(border, row);
+        Grid.SetColumn(border, 2);
+        grid.Children.Add(border);
+    }
+    // 3. Yangi Jami qismini yaratish
+    private void AddRowTotalNew(Grid grid, decimal totalCredit, decimal totalDebit, double height)
+    {
+        int row1 = grid.RowDefinitions.Count;
+        grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(height) });
+        int row2 = row1 + 1;
+        grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(height) });
+
+        // JAMI birlashgan katak - FontSize 14 (Oldingi kelishuv bo'yicha)
+        var jamiBorder = new Border
+        {
+            BorderBrush = Brushes.Black,
+            BorderThickness = new Thickness(0.5, 0.5, 0, 0.5),
+            Child = new TextBlock
+            {
+                Text = "JAMI",
+                FontSize = 14,
+                FontWeight = FontWeights.Bold,
+                TextAlignment = TextAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                Padding = new Thickness(5)
+            }
+        };
+        Grid.SetRow(jamiBorder, row1);
+        Grid.SetRowSpan(jamiBorder, 2);
+        Grid.SetColumn(jamiBorder, 0);
+        grid.Children.Add(jamiBorder);
+
+        // Debit qatori - FontSize 14 va DarkRed
+        AddSimpleCell(grid, row1, 1, "Debit", TextAlignment.Center, FontWeights.Bold, 14, new Thickness(0.5, 0.5, 0, 0.5), Brushes.DarkRed);
+        AddSimpleCell(grid, row1, 2, totalDebit.ToString("N2"), TextAlignment.Right, FontWeights.Bold, 14, new Thickness(0.5, 0.5, 0.5, 0.5), Brushes.DarkRed);
+
+        // Kredit qatori - FontSize 14 va Black
+        AddSimpleCell(grid, row2, 1, "Kredit", TextAlignment.Center, FontWeights.Bold, 14, new Thickness(0.5, 0, 0, 0.5), Brushes.Black);
+        AddSimpleCell(grid, row2, 2, totalCredit.ToString("N2"), TextAlignment.Right, FontWeights.Bold, 14, new Thickness(0.5, 0, 0.5, 0.5), Brushes.Black);
+    }
+    // 4. AddSimpleCell metodiga rang (Brush) qo'shish
+    private void AddSimpleCell(Grid grid, int row, int column, string value, TextAlignment align, FontWeight weight, double size, Thickness borderThickness, Brush foreground)
+    {
+        var tb = new TextBlock
+        {
+            Text = value,
+            Padding = new Thickness(5, 2, 5, 2),
+            FontSize = size,
+            FontWeight = weight,
+            TextAlignment = align,
+            Foreground = foreground, // Rang shu yerda ishlatiladi
+            TextWrapping = TextWrapping.Wrap,
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+
+        var border = new Border
+        {
+            BorderBrush = Brushes.Black,
+            BorderThickness = borderThickness,
+            Child = tb
+        };
+
+        Grid.SetRow(border, row);
+        Grid.SetColumn(border, column);
+        grid.Children.Add(border);
     }
 
     private Border CreateBalanceInfoBlock(string label, string value, Brush background)
@@ -669,78 +773,6 @@ public partial class TurnoversPageViewModel : ViewModelBase
             BorderBrush = Brushes.Black,
             BorderThickness = new Thickness(0.5), // Jadval chiziqlari bilan bir xil bo'lishi uchun
             Child = grid
-        };
-    }
-
-    private void AddOperationRow(Grid grid, CustomerOperationForDisplayViewModel op, double approxSingleRowHeight)
-    {
-        int row = grid.RowDefinitions.Count;
-        double requiredHeight = CalculateOperationRowHeight(op, 430); // Izoh ustuni kengligi 450
-        grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(requiredHeight) });
-
-        // Sana (0-ustun) - Normal qolgani ma'qul, o'qishga oson bo'ladi
-        AddSimpleCell(grid, row, 0, op.Date.ToString("dd.MM.yyyy"), TextAlignment.Center, FontWeights.Normal, 12, new Thickness(0.5, 0.5, 0, 0.5));
-
-        // Izoh (1-ustun)
-        AddSimpleCell(grid, row, 1, op.Description ?? op.FormattedDescription ?? "", TextAlignment.Left, FontWeights.Normal, 12, new Thickness(0.5, 0.5, 0, 0.5));
-
-        // >>> Kredit (2-ustun) - ENDI BOLD <<<
-        AddSimpleCell(grid, row, 2, op.Credit == 0 ? "" : op.Credit.ToString("N2"), TextAlignment.Right, FontWeights.Bold, 12, new Thickness(0.5, 0.5, 0, 0.5));
-
-        // >>> Debit (3-ustun) - ENDI BOLD <<<
-        AddSimpleCell(grid, row, 3, op.Debit == 0 ? "" : op.Debit.ToString("N2"), TextAlignment.Right, FontWeights.Bold, 12, new Thickness(0.5, 0.5, 0.5, 0.5));
-    }
-
-    private void AddRowHeader(Grid grid, string date, string description, string credit, string debit, double height)
-    {
-        int row = grid.RowDefinitions.Count;
-        grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(height) });
-
-        AddSimpleCell(grid, row, 0, date, TextAlignment.Center, FontWeights.Bold, 13, new Thickness(0.5, 0.5, 0, 0.5));
-        AddSimpleCell(grid, row, 1, description, TextAlignment.Center, FontWeights.Bold, 13, new Thickness(0.5, 0.5, 0, 0.5));
-        AddSimpleCell(grid, row, 2, credit, TextAlignment.Center, FontWeights.Bold, 13, new Thickness(0.5, 0.5, 0, 0.5));
-        AddSimpleCell(grid, row, 3, debit, TextAlignment.Center, FontWeights.Bold, 13, new Thickness(0.5));
-    }
-
-    private void AddRowTotal(Grid grid, string label, string totalCredit, string totalDebit, double height)
-    {
-        int row = grid.RowDefinitions.Count;
-        grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(height) });
-
-        // Label (0-ustun)
-        var labelBorder = CreateBorderWithText(label, TextAlignment.Center, FontWeights.Bold, 12, new Thickness(0.5, 0.5, 0, 0.5));
-        Grid.SetRow(labelBorder, row);
-        Grid.SetColumn(labelBorder, 0);
-        grid.Children.Add(labelBorder);
-
-        // Bo'sh joy (Izoh qismi - 1-ustun)
-        var blankBorder = new Border { BorderBrush = Brushes.Black, BorderThickness = new Thickness(0.5, 0.5, 0, 0.5) };
-        Grid.SetRow(blankBorder, row);
-        Grid.SetColumn(blankBorder, 1);
-        grid.Children.Add(blankBorder);
-
-        // Kredit (2-ustun)
-        AddSimpleCell(grid, row, 2, totalCredit, TextAlignment.Right, FontWeights.Bold, 12, new Thickness(0.5, 0.5, 0, 0.5));
-
-        // Debit (3-ustun)
-        AddSimpleCell(grid, row, 3, totalDebit, TextAlignment.Right, FontWeights.Bold, 12, new Thickness(0.5, 0.5, 0.5, 0.5));
-    }
-
-    private Border CreateBorderWithText(string text, TextAlignment align, FontWeight weight, double size, Thickness borderThickness)
-    {
-        return new Border
-        {
-            BorderBrush = Brushes.Black,
-            BorderThickness = borderThickness,
-            Child = new TextBlock
-            {
-                Text = text,
-                Padding = new Thickness(5, 2, 5, 2),
-                FontSize = size,
-                FontWeight = weight,
-                TextAlignment = align,
-                TextWrapping = TextWrapping.Wrap
-            }
         };
     }
 
@@ -808,50 +840,20 @@ public partial class TurnoversPageViewModel : ViewModelBase
 
     private double CalculateOperationRowHeight(CustomerOperationForDisplayViewModel op, double commentColumnWidth)
     {
-        // Izohning necha satrni egallashini hisoblaymiz
         string description = op.Description ?? op.FormattedDescription ?? "";
 
         var tempTextBlock = new TextBlock
         {
             Text = description,
-            Width = commentColumnWidth - 10, // Padding uchun 10 ni ayiramiz
+            Width = commentColumnWidth - 10,
             TextWrapping = TextWrapping.Wrap,
-            FontSize = 12
+            FontSize = 12 // Qator balandligini 12 shriftga qarab hisoblaydi
         };
 
-        // O'lchash
         tempTextBlock.Measure(new Size(commentColumnWidth - 10, double.MaxValue));
+        double actualHeight = tempTextBlock.DesiredSize.Height + 8;
 
-        // Asl matn balandligi
-        double actualHeight = tempTextBlock.DesiredSize.Height + 4; // Padding (2 tepa + 2 past)
-
-        // Eng kam balandlikni hisobga olish
-        return Math.Max(25, actualHeight); // Eng kamida 25 piksel bo'lishi kerak
-    }
-
-    private void AddSimpleCell(Grid grid, int row, int column, string value, TextAlignment align, FontWeight weight, double size, Thickness borderThickness)
-    {
-        var tb = new TextBlock
-        {
-            Text = value,
-            Padding = new Thickness(5, 2, 5, 2),
-            FontSize = size,
-            FontWeight = weight,
-            TextAlignment = align,
-            TextWrapping = TextWrapping.Wrap,
-            HorizontalAlignment = HorizontalAlignment.Stretch
-        };
-
-        var border = new Border
-        {
-            BorderBrush = Brushes.Black,
-            BorderThickness = borderThickness,
-            Child = tb
-        };
-
-        Grid.SetRow(border, row);
-        Grid.SetColumn(border, column);
-        grid.Children.Add(border);
+        return Math.Max(25, actualHeight);
     }
 
     public class PaginatedOperation
