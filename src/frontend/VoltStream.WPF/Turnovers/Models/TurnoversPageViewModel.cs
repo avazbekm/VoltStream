@@ -631,16 +631,106 @@ public partial class TurnoversPageViewModel : ViewModelBase
     private void AddOperationRow(Grid grid, CustomerOperationForDisplayViewModel op, double approxSingleRowHeight)
     {
         int row = grid.RowDefinitions.Count;
-        // Kenglikni 555 deb qat'iy belgilash yoki widths[1] dan foydalanish
+        // Kenglik 555 bo'lganda balandlikni hisoblash
         double requiredHeight = CalculateOperationRowHeight(op, 555);
         grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(requiredHeight) });
 
         Brush amountBrush = op.Debit > 0 ? Brushes.DarkRed : Brushes.Black;
         string amountText = op.Debit > 0 ? op.Debit.ToString("N2") : op.Credit.ToString("N2");
 
-        // Sana: 12, Izoh: 12, Debit/Kredit: 12
+        // 1. Sana ustuni
         AddSimpleCell(grid, row, 0, op.Date.ToString("dd.MM.yyyy"), TextAlignment.Center, FontWeights.Normal, 12, new Thickness(0.5, 0.5, 0, 0.5), Brushes.Black);
-        AddSimpleCell(grid, row, 1, op.Description ?? op.FormattedDescription ?? "", TextAlignment.Left, FontWeights.Normal, 12, new Thickness(0.5, 0.5, 0, 0.5), Brushes.Black);
+
+        // 2. Izoh ustuni
+        var descriptionTb = new TextBlock
+        {
+            FontSize = 12,
+            TextWrapping = TextWrapping.Wrap,
+            Padding = new Thickness(5, 10, 5, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        string fullDesc = op.Description ?? op.FormattedDescription ?? "";
+        // Qatorlarga bo'lish
+        string[] lines = fullDesc.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+
+        bool insideSavdo = false;
+
+        foreach (var line in lines)
+        {
+            string trimmedLine = line.Trim();
+
+            // Savdo blokini aniqlash
+            if (trimmedLine.StartsWith("Savdo:", StringComparison.OrdinalIgnoreCase))
+            {
+                insideSavdo = true;
+                descriptionTb.Inlines.Add(new Run(line) { FontWeight = FontWeights.Bold });
+            }
+            // Savdo ichidagi mahsulot qatori (Nomi - Miqdor = Summa)
+            else if (insideSavdo && line.Contains("-") && line.Contains("="))
+            {
+                int dashIndex = line.IndexOf('-');
+                int equalIndex = line.IndexOf('=');
+
+                // 1. Mahsulot nomi (Bold) - "-" belgisigacha
+                descriptionTb.Inlines.Add(new Run(line.Substring(0, dashIndex)) { FontWeight = FontWeights.Bold });
+                descriptionTb.Inlines.Add(new Run("-"));
+
+                // 2. Miqdor va narx (Normal) - "-" dan "=" gacha
+                int middleLength = equalIndex - (dashIndex + 1);
+                descriptionTb.Inlines.Add(new Run(line.Substring(dashIndex + 1, middleLength)));
+
+                // 3. Summa (Bold) - "=" dan birinchi bo'shliqgacha
+                string afterEqual = line.Substring(equalIndex); // "= 3,300,000.00 ..."
+                int firstSpaceAfterSum = afterEqual.IndexOf(' ', 2);
+
+                if (firstSpaceAfterSum != -1)
+                {
+                    string sumPart = afterEqual.Substring(0, firstSpaceAfterSum);
+                    string restPart = afterEqual.Substring(firstSpaceAfterSum);
+                    descriptionTb.Inlines.Add(new Run(sumPart) { FontWeight = FontWeights.Bold });
+                    descriptionTb.Inlines.Add(new Run(restPart));
+                }
+                else
+                {
+                    descriptionTb.Inlines.Add(new Run(afterEqual) { FontWeight = FontWeights.Bold });
+                }
+            }
+            // To'lovlar (Naqd:, O'tkazma: va h.k.) yoki boshqa ":" bor qatorlar
+            else if (line.Contains(":"))
+            {
+                // "Savdo:" emasligini tekshiramiz (chunki u yuqorida bold bo'ldi)
+                int colonIndex = line.IndexOf(':');
+                descriptionTb.Inlines.Add(new Run(line.Substring(0, colonIndex + 1)) { FontWeight = FontWeights.Bold });
+                descriptionTb.Inlines.Add(new Run(line.Substring(colonIndex + 1)));
+
+                // Agar "Jami:" yoki "Chegirma:" kelsa, Savdo bloki tugaydi
+                if (trimmedLine.StartsWith("Jami:", StringComparison.OrdinalIgnoreCase) ||
+                    trimmedLine.StartsWith("Chegirma:", StringComparison.OrdinalIgnoreCase))
+                {
+                    insideSavdo = false;
+                }
+            }
+            else
+            {
+                // Hech qanday belgi bo'lmasa oddiy matn
+                descriptionTb.Inlines.Add(new Run(line));
+            }
+
+            descriptionTb.Inlines.Add(new LineBreak());
+        }
+
+        var borderDesc = new Border
+        {
+            BorderBrush = Brushes.Black,
+            BorderThickness = new Thickness(0.5, 0.5, 0, 0.5),
+            Child = descriptionTb
+        };
+        Grid.SetRow(borderDesc, row);
+        Grid.SetColumn(borderDesc, 1);
+        grid.Children.Add(borderDesc);
+
+        // 3. Debit/Kredit ustuni
         AddSimpleCell(grid, row, 2, amountText, TextAlignment.Right, FontWeights.Bold, 12, new Thickness(0.5, 0.5, 0.5, 0.5), amountBrush);
     }
     // 2. Header o'zgarishi
@@ -704,11 +794,11 @@ public partial class TurnoversPageViewModel : ViewModelBase
         grid.Children.Add(jamiBorder);
 
         // Debit qatori - FontSize 14 va DarkRed
-        AddSimpleCell(grid, row1, 1, "Debit", TextAlignment.Center, FontWeights.Bold, 14, new Thickness(0.5, 0.5, 0, 0.5), Brushes.DarkRed);
+        AddSimpleCell(grid, row1, 1, "Debit", TextAlignment.Left, FontWeights.Bold, 14, new Thickness(0.5, 0.5, 0, 0.5), Brushes.DarkRed);
         AddSimpleCell(grid, row1, 2, totalDebit.ToString("N2"), TextAlignment.Right, FontWeights.Bold, 14, new Thickness(0.5, 0.5, 0.5, 0.5), Brushes.DarkRed);
 
         // Kredit qatori - FontSize 14 va Black
-        AddSimpleCell(grid, row2, 1, "Kredit", TextAlignment.Center, FontWeights.Bold, 14, new Thickness(0.5, 0, 0, 0.5), Brushes.Black);
+        AddSimpleCell(grid, row2, 1, "Kredit", TextAlignment.Left, FontWeights.Bold, 14, new Thickness(0.5, 0, 0, 0.5), Brushes.Black);
         AddSimpleCell(grid, row2, 2, totalCredit.ToString("N2"), TextAlignment.Right, FontWeights.Bold, 14, new Thickness(0.5, 0, 0.5, 0.5), Brushes.Black);
     }
     // 4. AddSimpleCell metodiga rang (Brush) qo'shish
