@@ -35,7 +35,6 @@ public partial class App : Application
 
         Services = host.Services;
 
-        DevKeyService.GenerateHardwareKey("D:/", "admin", "8520");
         var secureCreds = DevKeyService.TryGetSecureCredentials();
         bool autoLoginSuccess = false;
 
