@@ -419,3 +419,4 @@ FodyWeavers.xsd
 /src/backend/VoltStream.WebApi/appsettings.Development.json
 /src/backend/VoltStream.Infrastructure/Migrations/*
 src/backend/VoltStream.Infrastructure/Persistence/Migrations/*
+/src/frontend/VoltStream.WPF/Commons/Services/DevKeyService.Secrets.cs
