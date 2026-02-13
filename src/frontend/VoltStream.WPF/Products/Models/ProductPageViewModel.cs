@@ -47,8 +47,7 @@ public partial class ProductPageViewModel : ViewModelBase
         await Task.WhenAll(
             LoadCategoriesAsync(),
             LoadProductsAsync(),
-            LoadWarehouseItemsAsync()
-        );
+            LoadWarehouseItemsAsync());
 
         ApplyFilter();
     }
