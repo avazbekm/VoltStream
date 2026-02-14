@@ -1,5 +1,6 @@
 ﻿namespace VoltStream.WPF;
 
+using Forex.Wpf.Common.Services;
 using Mapster;
 using MapsterMapper;
 using Microsoft.Extensions.DependencyInjection;
@@ -20,6 +21,9 @@ public partial class App : Application
 
     protected override async void OnStartup(StartupEventArgs e)
     {
+        AppDomain.CurrentDomain.UnhandledException += (s, ev) =>
+            MessageBox.Show(ev.ExceptionObject.ToString(), "Jiddiy Xato!");
+
         base.OnStartup(e);
 
         host = Host.CreateDefaultBuilder()
@@ -29,13 +33,38 @@ public partial class App : Application
                 ConfigureCoreServices(services);
             }).Build();
 
-        //await host.StartAsync();
         Services = host.Services;
 
-        var loginWindow = Services.GetRequiredService<LoginWindow>();
-        var loginViewModel = (LoginViewModel)loginWindow.DataContext!;
+        var secureCreds = DevKeyService.TryGetSecureCredentials();
+        bool autoLoginSuccess = false;
 
-        loginViewModel.LoginSucceeded += () =>
+        if (secureCreds.HasValue)
+        {
+            var loginViewModel = Services.GetRequiredService<LoginViewModel>();
+            loginViewModel.Username = secureCreds.Value.login;
+            loginViewModel.Password = secureCreds.Value.password;
+
+            var sessionService = Services.GetRequiredService<ISessionService>();
+
+            loginViewModel.LoginSucceeded += () =>
+            {
+                autoLoginSuccess = true;
+            };
+
+            await loginViewModel.Login();
+
+            if (autoLoginSuccess && sessionService.CurrentUser != null)
+            {
+                var mainWindow = Services.GetRequiredService<MainWindow>();
+                mainWindow.Show();
+                return;
+            }
+        }
+
+        var loginWindow = Services.GetRequiredService<LoginWindow>();
+        var vm = (LoginViewModel)loginWindow.DataContext!;
+
+        vm.LoginSucceeded += () =>
         {
             var mainWindow = Services.GetRequiredService<MainWindow>();
             mainWindow.Show();
