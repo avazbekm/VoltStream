@@ -631,28 +631,54 @@ public partial class TurnoversPageViewModel : ViewModelBase
     private void AddOperationRow(Grid grid, CustomerOperationForDisplayViewModel op, double approxSingleRowHeight)
     {
         int row = grid.RowDefinitions.Count;
-        // Kenglik 555 bo'lganda balandlikni hisoblash
         double requiredHeight = CalculateOperationRowHeight(op, 555);
         grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(requiredHeight) });
 
         Brush amountBrush = op.Debit > 0 ? Brushes.DarkRed : Brushes.Black;
         string amountText = op.Debit > 0 ? op.Debit.ToString("N2") : op.Credit.ToString("N2");
 
-        // 1. Sana ustuni
         AddSimpleCell(grid, row, 0, op.Date.ToString("dd.MM.yyyy"), TextAlignment.Center, FontWeights.Normal, 12, new Thickness(0.5, 0.5, 0, 0.5), Brushes.Black);
 
-        // 2. Izoh ustuni
         var descriptionTb = new TextBlock
         {
-            FontSize = 12,
+            FontSize = 11,
             TextWrapping = TextWrapping.Wrap,
-            Padding = new Thickness(5, 10, 5, 0),
-            VerticalAlignment = VerticalAlignment.Center
+            Padding = new Thickness(3,5,3,0),
+            VerticalAlignment = VerticalAlignment.Center,
+            FontFamily = new FontFamily("Consolas")
         };
 
         string fullDesc = op.Description ?? op.FormattedDescription ?? "";
-        // Qatorlarga bo'lish
         string[] lines = fullDesc.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+
+        int maxNameLen = 0;
+        int maxCalcLen = 0;
+        int maxSumLen = 0;
+
+        // 1. USTUNLARNI TEKISLASH UCHUN MAKSIMAL UZUNLIKLARNI HISOBLASH
+        foreach (var line in lines)
+        {
+            int lastDash = line.LastIndexOf('-');
+            int firstEqual = line.IndexOf('=');
+            int firstBracket = line.IndexOf('[');
+
+            if (lastDash != -1 && firstEqual != -1 && firstEqual > lastDash)
+            {
+                string namePart = line.Substring(0, lastDash).Trim();
+                if (namePart.Length > maxNameLen) maxNameLen = namePart.Length;
+
+                string calcPart = line.Substring(lastDash + 1, firstEqual - (lastDash + 1)).Trim();
+                if (calcPart.Length > maxCalcLen) maxCalcLen = calcPart.Length;
+
+                string sumPart;
+                if (firstBracket != -1 && firstBracket > firstEqual)
+                    sumPart = line.Substring(firstEqual + 1, firstBracket - (firstEqual + 1)).Trim();
+                else
+                    sumPart = line.Substring(firstEqual + 1).Trim();
+
+                if (sumPart.Length > maxSumLen) maxSumLen = sumPart.Length;
+            }
+        }
 
         bool insideSavdo = false;
 
@@ -660,77 +686,65 @@ public partial class TurnoversPageViewModel : ViewModelBase
         {
             string trimmedLine = line.Trim();
 
-            // Savdo blokini aniqlash
             if (trimmedLine.StartsWith("Savdo:", StringComparison.OrdinalIgnoreCase))
             {
                 insideSavdo = true;
                 descriptionTb.Inlines.Add(new Run(line) { FontWeight = FontWeights.Bold });
             }
-            // Savdo ichidagi mahsulot qatori (Nomi - Miqdor = Summa)
             else if (insideSavdo && line.Contains("-") && line.Contains("="))
             {
-                int dashIndex = line.IndexOf('-');
-                int equalIndex = line.IndexOf('=');
+                int lastDash = line.LastIndexOf('-');
+                int firstEqual = line.IndexOf('=');
+                int firstBracket = line.IndexOf('[');
 
-                // 1. Mahsulot nomi (Bold) - "-" belgisigacha
-                descriptionTb.Inlines.Add(new Run(line.Substring(0, dashIndex)) { FontWeight = FontWeights.Bold });
-                descriptionTb.Inlines.Add(new Run("-"));
-
-                // 2. Miqdor va narx (Normal) - "-" dan "=" gacha
-                int middleLength = equalIndex - (dashIndex + 1);
-                descriptionTb.Inlines.Add(new Run(line.Substring(dashIndex + 1, middleLength)));
-
-                // 3. Summa (Bold) - "=" dan birinchi bo'shliqgacha
-                string afterEqual = line.Substring(equalIndex); // "= 3,300,000.00 ..."
-                int firstSpaceAfterSum = afterEqual.IndexOf(' ', 2);
-
-                if (firstSpaceAfterSum != -1)
+                if (lastDash != -1 && firstEqual != -1 && firstEqual > lastDash)
                 {
-                    string sumPart = afterEqual.Substring(0, firstSpaceAfterSum);
-                    string restPart = afterEqual.Substring(firstSpaceAfterSum);
-                    descriptionTb.Inlines.Add(new Run(sumPart) { FontWeight = FontWeights.Bold });
-                    descriptionTb.Inlines.Add(new Run(restPart));
+                    // A. Mahsulot nomi (Bold)
+                    string namePart = line.Substring(0, lastDash).Trim();
+                    descriptionTb.Inlines.Add(new Run(namePart.PadRight(maxNameLen + 1)) { FontWeight = FontWeights.Bold });
+
+                    // B. Hisob-kitob
+                    descriptionTb.Inlines.Add(new Run("- "));
+                    string calcPart = line.Substring(lastDash + 1, firstEqual - (lastDash + 1)).Trim();
+                    descriptionTb.Inlines.Add(new Run(calcPart.PadRight(maxCalcLen + 1)));
+
+                    // C. Summa (Bold)
+                    descriptionTb.Inlines.Add(new Run("= "));
+                    string sumPart;
+                    if (firstBracket != -1 && firstBracket > firstEqual)
+                        sumPart = line.Substring(firstEqual + 1, firstBracket - (firstEqual + 1)).Trim();
+                    else
+                        sumPart = line.Substring(firstEqual + 1).Trim();
+
+                    // PadRight bu yerda summadan keyin kerakli bo'shliqni o'zi qo'shadi
+                    descriptionTb.Inlines.Add(new Run(sumPart.PadRight(maxSumLen + 1)) { FontWeight = FontWeights.Bold });
+
+                    // D. Chegirma qismi (Normal)
+                    if (firstBracket != -1 && firstBracket > firstEqual)
+                    {
+                        descriptionTb.Inlines.Add(new Run(line.Substring(firstBracket).Trim()));
+                    }
                 }
-                else
-                {
-                    descriptionTb.Inlines.Add(new Run(afterEqual) { FontWeight = FontWeights.Bold });
-                }
+                else { descriptionTb.Inlines.Add(new Run(line)); }
             }
-            // To'lovlar (Naqd:, O'tkazma: va h.k.) yoki boshqa ":" bor qatorlar
             else if (line.Contains(":"))
             {
-                // "Savdo:" emasligini tekshiramiz (chunki u yuqorida bold bo'ldi)
                 int colonIndex = line.IndexOf(':');
                 descriptionTb.Inlines.Add(new Run(line.Substring(0, colonIndex + 1)) { FontWeight = FontWeights.Bold });
                 descriptionTb.Inlines.Add(new Run(line.Substring(colonIndex + 1)));
 
-                // Agar "Jami:" yoki "Chegirma:" kelsa, Savdo bloki tugaydi
                 if (trimmedLine.StartsWith("Jami:", StringComparison.OrdinalIgnoreCase) ||
                     trimmedLine.StartsWith("Chegirma:", StringComparison.OrdinalIgnoreCase))
-                {
                     insideSavdo = false;
-                }
             }
-            else
-            {
-                // Hech qanday belgi bo'lmasa oddiy matn
-                descriptionTb.Inlines.Add(new Run(line));
-            }
+            else { descriptionTb.Inlines.Add(new Run(line)); }
 
             descriptionTb.Inlines.Add(new LineBreak());
         }
 
-        var borderDesc = new Border
-        {
-            BorderBrush = Brushes.Black,
-            BorderThickness = new Thickness(0.5, 0.5, 0, 0.5),
-            Child = descriptionTb
-        };
-        Grid.SetRow(borderDesc, row);
-        Grid.SetColumn(borderDesc, 1);
-        grid.Children.Add(borderDesc);
+        var borderDesc = new Border { BorderBrush = Brushes.Black, BorderThickness = new Thickness(0.5, 0.5, 0, 0.5), Child = descriptionTb };
+        Grid.SetRow(borderDesc, row); Grid.SetColumn(borderDesc, 1); grid.Children.Add(borderDesc);
 
-        // 3. Debit/Kredit ustuni
         AddSimpleCell(grid, row, 2, amountText, TextAlignment.Right, FontWeights.Bold, 12, new Thickness(0.5, 0.5, 0.5, 0.5), amountBrush);
     }
     // 2. Header o'zgarishi
