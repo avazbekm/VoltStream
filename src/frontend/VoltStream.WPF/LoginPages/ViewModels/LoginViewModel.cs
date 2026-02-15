@@ -89,7 +89,7 @@ public partial class LoginViewModel(
             var viewModel = services.GetRequiredService<ConnectionSettingsViewModel>();
             var window = new ConnectionSettingsWindow(viewModel)
             {
-                Owner = Application.Current.MainWindow
+                WindowStartupLocation = WindowStartupLocation.CenterScreen
             };
 
             return window.ShowDialog();
